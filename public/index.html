@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DX - Chess Staking Platform</title>
+  <link rel="stylesheet" href="styles.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- Navigation -->
+  <nav class="navbar">
+    <div class="nav-brand">
+      <span class="logo">♞</span>
+      <span class="brand-name">DX</span>
+    </div>
+    <div class="nav-links" id="navLinks">
+      <a href="#" onclick="showSection('dashboard')" class="nav-link active" data-section="dashboard">Dashboard</a>
+      <a href="#" onclick="showSection('matches')" class="nav-link" data-section="matches">Matches</a>
+      <a href="#" onclick="showSection('create')" class="nav-link" data-section="create">Create Match</a>
+      <a href="#" onclick="showSection('wallet')" class="nav-link" data-section="wallet">Wallet</a>
+      <a href="#" onclick="showSection('admin')" class="nav-link admin-only" data-section="admin">Admin</a>
+    </div>
+    <div class="nav-user">
+      <div class="balance-display" id="navBalance">
+        <span class="currency">₦</span><span id="navBalanceValue">0</span>
+      </div>
+      <button onclick="logout()" class="btn btn-outline btn-sm">Logout</button>
+    </div>
+  </nav>
+
+  <!-- Auth Section -->
+  <div id="authSection" class="auth-container">
+    <div class="auth-card">
+      <div class="auth-header">
+        <div class="auth-logo">
+          <span class="logo-large">♞</span>
+        </div>
+        <h1>DX</h1>
+        <p class="auth-subtitle">Peer-to-Peer Chess Staking</p>
+      </div>
+      
+      <div class="auth-tabs">
+        <button class="auth-tab active" onclick="switchAuthTab('login')">Login</button>
+        <button class="auth-tab" onclick="switchAuthTab('register')">Register</button>
+      </div>
+
+      <!-- Login Form -->
+      <form id="loginForm" class="auth-form" onsubmit="handleLogin(event)">
+        <div class="form-group">
+          <label for="loginUsername">Username or Email</label>
+          <input type="text" id="loginUsername" required placeholder="Enter your username">
+        </div>
+        <div class="form-group">
+          <label for="loginPassword">Password</label>
+          <input type="password" id="loginPassword" required placeholder="Enter your password">
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Login</button>
+      </form>
+
+      <!-- Register Form -->
+      <form id="registerForm" class="auth-form hidden" onsubmit="handleRegister(event)">
+        <div class="form-group">
+          <label for="registerUsername">Username</label>
+          <input type="text" id="registerUsername" required placeholder="Choose a username" minlength="3">
+        </div>
+        <div class="form-group">
+          <label for="registerEmail">Email</label>
+          <input type="email" id="registerEmail" required placeholder="Enter your email">
+        </div>
+        <div class="form-group">
+          <label for="registerPassword">Password</label>
+          <input type="password" id="registerPassword" required placeholder="Create a password" minlength="6">
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Create Account</button>
+      </form>
+
+      <div class="auth-footer">
+        <p>Powered by <strong>Lichess</strong></p>
+        <p class="fee-info">Transparent 1.5% platform fee</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dashboard Section -->
+  <div id="dashboardSection" class="section-container hidden">
+    <div class="section-header">
+      <h2>Dashboard</h2>
+      <p>Welcome back, <span id="dashboardUsername"></span></p>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-icon">💰</div>
+        <div class="stat-content">
+          <span class="stat-label">Wallet Balance</span>
+          <span class="stat-value">₦<span id="walletBalance">0</span></span>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">🔒</div>
+        <div class="stat-content">
+          <span class="stat-label">Locked Balance</span>
+          <span class="stat-value">₦<span id="lockedBalance">0</span></span>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">🏆</div>
+        <div class="stat-content">
+          <span class="stat-label">Matches Won</span>
+          <span class="stat-value" id="matchesWon">0</span>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">📊</div>
+        <div class="stat-content">
+          <span class="stat-label">Win Rate</span>
+          <span class="stat-value"><span id="winRate">0</span>%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="quick-actions">
+      <h3>Quick Actions</h3>
+      <div class="actions-grid">
+        <button class="action-card" onclick="showSection('create')">
+          <span class="action-icon">🎮</span>
+          <span class="action-text">Create Match</span>
+        </button>
+        <button class="action-card" onclick="showSection('matches')">
+          <span class="action-icon">📋</span>
+          <span class="action-text">Browse Challenges</span>
+        </button>
+        <button class="action-card" onclick="showSection('wallet')">
+          <span class="action-icon">💳</span>
+          <span class="action-text">Add Funds</span>
+        </button>
+        <button class="action-card" onclick="showSection('my-matches')">
+          <span class="action-icon">📜</span>
+          <span class="action-text">My Matches</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Active Matches -->
+    <div class="active-matches-section">
+      <h3>Active Matches</h3>
+      <div id="activeMatchesList" class="matches-list">
+        <p class="empty-state">No active matches</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Match Section -->
+  <div id="createSection" class="section-container hidden">
+    <div class="section-header">
+      <h2>Create Match Challenge</h2>
+      <p>Set up a staking challenge for other players</p>
+    </div>
+
+    <div class="form-card">
+      <form id="createMatchForm" onsubmit="handleCreateMatch(event)">
+        <div class="form-group">
+          <label for="stakeAmount">Stake Amount (₦)</label>
+          <input type="number" id="stakeAmount" required min="500" placeholder="Minimum ₦500">
+          <small>Minimum stake: ₦500</small>
+        </div>
+
+        <div class="form-group">
+          <label for="timeControl">Time Control</label>
+          <select id="timeControl" required>
+            <option value="blitz">Blitz (3+2, 3+0)</option>
+            <option value="rapid">Rapid (10+0, 10+5, 15+10)</option>
+            <option value="classical">Classical (30+0, 30+20)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Game Type</label>
+          <div class="radio-group">
+            <label class="radio-label">
+              <input type="radio" name="isRated" value="false" checked>
+              <span>Casual</span>
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="isRated" value="true">
+              <span>Rated</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Fee Breakdown -->
+        <div class="fee-breakdown">
+          <h4>Fee Breakdown</h4>
+          <div class="breakdown-item">
+            <span>Your Stake:</span>
+            <span id="breakdownStake">₦0</span>
+          </div>
+          <div class="breakdown-item">
+            <span>Total Pot:</span>
+            <span id="breakdownPot">₦0</span>
+          </div>
+          <div class="breakdown-item fee">
+            <span>DX Platform Fee (1.5%):</span>
+            <span id="breakdownFee">₦0</span>
+          </div>
+          <div class="breakdown-item total">
+            <span>Winner Receives:</span>
+            <span id="breakdownWinner">₦0</span>
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-block">Create Challenge</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Browse Matches Section -->
+  <div id="matchesSection" class="section-container hidden">
+    <div class="section-header">
+      <h2>Open Challenges</h2>
+      <p>Accept a challenge and stake your skills</p>
+    </div>
+
+    <div class="filters-bar">
+      <select id="matchFilterTime" onchange="loadOpenMatches()">
+        <option value="all">All Time Controls</option>
+        <option value="blitz">Blitz</option>
+        <option value="rapid">Rapid</option>
+        <option value="classical">Classical</option>
+      </select>
+    </div>
+
+    <div id="openMatchesList" class="matches-grid">
+      <p class="empty-state">No open challenges available</p>
+    </div>
+  </div>
+
+  <!-- My Matches Section -->
+  <div id="my-matchesSection" class="section-container hidden">
+    <div class="section-header">
+      <h2>My Matches</h2>
+      <p>Track your match history</p>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" onclick="switchMatchTab('pending')">Pending</button>
+      <button class="tab" onclick="switchMatchTab('completed')">Completed</button>
+    </div>
+
+    <div id="myMatchesList" class="matches-list">
+      <p class="empty-state">No matches yet</p>
+    </div>
+  </div>
+
+  <!-- Submit Result Section -->
+  <div id="submitResultSection" class="section-container hidden">
+    <div class="section-header">
+      <h2>Submit Game Result</h2>
+      <p>Enter the Lichess game ID to verify your result</p>
+    </div>
+
+    <div class="form-card">
+      <form id="submitResultForm" onsubmit="handleSubmitResult(event)">
+        <input type="hidden" id="submitMatchId">
+        
+        <div class="match-details-preview" id="matchDetailsPreview">
+          <p>Loading match details...</p>
+        </div>
+
+        <div class="form-group">
+          <label for="lichessGameId">Lichess Game ID</label>
+          <input type="text" id="lichessGameId" required placeholder="e.g., abc123def">
+          <small>Find this in the game URL: lichess.org/abc123def</small>
+        </div>
+
+        <div class="form-group">
+          <label for="lichessGameUrl">Game URL (optional)</label>
+          <input type="url" id="lichessGameUrl" placeholder="https://lichess.org/abc123def">
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-block">Verify & Submit Result</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Wallet Section -->
+  <div id="walletSection" class="section-container hidden">
+    <div class="section-header">
+      <h2>Wallet</h2>
+      <p>Manage your funds</p>
+    </div>
+
+    <div class="wallet-cards">
+      <div class="wallet-card main">
+        <div class="wallet-balance">
+          <span class="label">Available Balance</span>
+          <span class="amount">₦<span id="walletBalanceDisplay">0</span></span>
+        </div>
+        <div class="wallet-locked">
+          <span>Locked: ₦<span id="walletLockedDisplay">0</span></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="wallet-actions">
+      <div class="action-section">
+        <h3>Add Funds</h3>
+        <form id="depositForm" onsubmit="handleDeposit(event)">
+          <div class="form-row">
+            <input type="number" id="depositAmount" required min="100" placeholder="Amount (₦)">
+            <button type="submit" class="btn btn-primary">Deposit</button>
+          </div>
+          <small>Minimum deposit: ₦100</small>
+        </form>
+      </div>
+
+      <div class="action-section">
+        <h3>Withdraw</h3>
+        <form id="withdrawForm" onsubmit="handleWithdraw(event)">
+          <div class="form-row">
+            <input type="number" id="withdrawAmount" required min="500" placeholder="Amount (₦)">
+            <button type="submit" class="btn btn-secondary">Withdraw</button>
+          </div>
+          <small>Minimum withdrawal: ₦500 (requires approval)</small>
+        </form>
+      </div>
+    </div>
+
+    <div class="transactions-section">
+      <h3>Transaction History</h3>
+      <div id="transactionsList" class="transactions-list">
+        <p class="empty-state">No transactions yet</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Admin Section -->
+  <div id="adminSection" class="section-container hidden">
+    <div class="section-header">
+      <h2>Admin Panel</h2>
+      <p>Platform management</p>
+    </div>
+
+    <div class="admin-tabs">
+      <button class="admin-tab active" onclick="switchAdminTab('stats')">Stats</button>
+      <button class="admin-tab" onclick="switchAdminTab('users')">Users</button>
+      <button class="admin-tab" onclick="switchAdminTab('matchadmin')">Matches</button>
+      <button class="admin-tab" onclick="switchAdminTab('withdrawals')">Withdrawals</button>
+    </div>
+
+    <!-- Stats Panel -->
+    <div id="adminStatsPanel" class="admin-panel">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-content">
+            <span class="stat-label">Total Users</span>
+            <span class="stat-value" id="adminTotalUsers">0</span>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-content">
+            <span class="stat-label">Total Matches</span>
+            <span class="stat-value" id="adminTotalMatches">0</span>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-content">
+            <span class="stat-label">Platform Fees</span>
+            <span class="stat-value">₦<span id="adminPlatformFees">0</span></span>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-content">
+            <span class="stat-label">Total Volume</span>
+            <span class="stat-value">₦<span id="adminTotalVolume">0</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Users Panel -->
+    <div id="adminUsersPanel" class="admin-panel hidden">
+      <div class="table-container">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Username</th>
+              <th>Email</th>
+              <th>Lichess</th>
+              <th>Balance</th>
+              <th>Matches</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="adminUsersList"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Matches Panel -->
+    <div id="adminMatchadminPanel" class="admin-panel hidden">
+      <div class="table-container">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Creator</th>
+              <th>Opponent</th>
+              <th>Stake</th>
+              <th>Status</th>
+              <th>Created</th>
+            </tr>
+          </thead>
+          <tbody id="adminMatchesList"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Withdrawals Panel -->
+    <div id="adminWithdrawalsPanel" class="admin-panel hidden">
+      <div class="table-container">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>User</th>
+              <th>Amount</th>
+              <th>Date</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="adminWithdrawalsList"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lichess Link Modal -->
+  <div id="lichessModal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Link Lichess Account</h3>
+        <button onclick="closeModal('lichessModal')" class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>Enter your Lichess username to verify your games:</p>
+        <form onsubmit="handleLinkLichess(event)">
+          <div class="form-group">
+            <label for="lichessUsername">Lichess Username</label>
+            <input type="text" id="lichessUsername" required placeholder="Your Lichess username">
+          </div>
+          <button type="submit" class="btn btn-primary btn-block">Link Account</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notifications -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
