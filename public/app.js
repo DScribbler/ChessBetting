@@ -1,4 +1,4 @@
-// DX - Chess Staking Platform Frontend Application
+// DX - Chess Staking Platform Frontend Application (Enhanced)
 
 const API_BASE = '/api';
 
@@ -60,14 +60,16 @@ async function handleRegister(event) {
   event.preventDefault();
   
   const username = document.getElementById('registerUsername').value;
+  const full_name = document.getElementById('registerFullName').value;
   const email = document.getElementById('registerEmail').value;
+  const phone = document.getElementById('registerPhone').value;
   const password = document.getElementById('registerPassword').value;
   
   try {
     const response = await fetch(`${API_BASE}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, email, password })
+      body: JSON.stringify({ username, full_name, email, phone, password })
     });
     
     const data = await response.json();
@@ -133,10 +135,11 @@ function switchAuthTab(tab) {
 function showAuth() {
   document.getElementById('authSection').classList.remove('hidden');
   document.getElementById('dashboardSection').classList.add('hidden');
-  document.getElementById('createSection').classList.add('hidden');
+  document.getElementById('challengesSection').classList.add('hidden');
+  document.getElementById('send-challengeSection').classList.add('hidden');
   document.getElementById('matchesSection').classList.add('hidden');
-  document.getElementById('my-matchesSection').classList.add('hidden');
   document.getElementById('submitResultSection').classList.add('hidden');
+  document.getElementById('appealSection').classList.add('hidden');
   document.getElementById('walletSection').classList.add('hidden');
   document.getElementById('adminSection').classList.add('hidden');
   
@@ -173,9 +176,9 @@ function showSection(section) {
   // Show selected section
   const sectionMap = {
     'dashboard': 'dashboardSection',
-    'create': 'createSection',
+    'challenges': 'challengesSection',
+    'send-challenge': 'send-challengeSection',
     'matches': 'matchesSection',
-    'my-matches': 'my-matchesSection',
     'wallet': 'walletSection',
     'admin': 'adminSection'
   };
@@ -190,11 +193,17 @@ function showSection(section) {
     case 'dashboard':
       loadDashboard();
       break;
-    case 'matches':
-      loadOpenMatches();
+    case 'challenges':
+      loadReceivedChallenges();
+      loadSentChallenges();
       break;
-    case 'my-matches':
-      loadMyMatches('pending');
+    case 'send-challenge':
+      initChallengeForm();
+      break;
+    case 'matches':
+      loadActiveMatches();
+      loadAwaitingMatches();
+      loadCompletedMatches();
       break;
     case 'wallet':
       loadWallet();
@@ -215,197 +224,450 @@ async function loadDashboard() {
   document.getElementById('matchesWon').textContent = currentUser.matches_won || 0;
   document.getElementById('winRate').textContent = currentUser.win_rate || 0;
   
-  // Load active matches
-  await loadMyMatches('pending');
+  // Load pending challenges and active matches
+  await loadPendingChallenges();
+  await loadActiveMatchesForDashboard();
 }
 
-// ================== MATCHES ==================
-
-async function loadOpenMatches() {
+async function loadPendingChallenges() {
   try {
-    const response = await fetch(`${API_BASE}/matches/open`, {
+    const response = await fetch(`${API_BASE}/challenges/pending`, {
       headers: { 'Authorization': `Bearer ${authToken}` }
     });
     
-    const matches = await response.json();
-    const container = document.getElementById('openMatchesList');
+    const challenges = await response.json();
+    const container = document.getElementById('pendingChallengesList');
     
-    if (matches.length === 0) {
-      container.innerHTML = '<p class="empty-state">No open challenges available</p>';
+    if (challenges.length === 0) {
+      container.innerHTML = '<p class="empty-state">No pending challenges</p>';
       return;
     }
     
-    container.innerHTML = matches.map(match => `
-      <div class="match-card">
-        <div class="match-header">
-          <span class="match-creator">${escapeHtml(match.creator_username)}</span>
-          <span class="match-stake">₦${formatNumber(match.stake_amount)}</span>
+    container.innerHTML = challenges.map(ch => `
+      <div class="challenge-card pending">
+        <div class="challenge-header">
+          <span class="challenge-creator">${escapeHtml(ch.creator_username)}</span>
+          <span class="challenge-stake">₦${formatNumber(ch.stake_amount)}</span>
         </div>
-        <div class="match-details">
-          <span>⏱️ ${match.time_control}</span>
-          <span>${match.is_rated ? '⭐ Rated' : '⚡ Casual'}</span>
+        <div class="challenge-details">
+          <span>⏱️ ${ch.time_control}</span>
+          <span>${ch.is_rated ? '⭐ Rated' : '⚡ Casual'}</span>
         </div>
-        <div class="match-actions">
-          <button class="btn btn-primary btn-sm" onclick="acceptMatch('${match.challenge_id}')">
-            Accept Challenge
-          </button>
+        <div class="challenge-actions">
+          <button class="btn btn-success btn-sm" onclick="acceptChallenge('${ch.challenge_code}')">Accept</button>
+          <button class="btn btn-danger btn-sm" onclick="declineChallenge('${ch.challenge_code}')">Decline</button>
         </div>
       </div>
     `).join('');
   } catch (error) {
-    showToast('Failed to load matches', 'error');
+    console.error('Failed to load pending challenges:', error);
   }
 }
 
-async function acceptMatch(challengeId) {
+async function loadActiveMatchesForDashboard() {
   try {
-    const response = await fetch(`${API_BASE}/matches/accept/${challengeId}`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${authToken}` }
-    });
-    
-    const data = await response.json();
-    
-    if (!response.ok) {
-      throw new Error(data.error || 'Failed to accept match');
-    }
-    
-    showToast(data.message, 'success');
-    showSection('my-matches');
-    loadDashboard();
-  } catch (error) {
-    showToast(error.message, 'error');
-  }
-}
-
-async function loadMyMatches(status) {
-  try {
-    const response = await fetch(`${API_BASE}/matches/my`, {
+    const response = await fetch(`${API_BASE}/matches/active`, {
       headers: { 'Authorization': `Bearer ${authToken}` }
     });
     
     const matches = await response.json();
+    const container = document.getElementById('activeMatchesList');
     
-    // Filter by status
-    const filtered = status === 'pending' 
-      ? matches.filter(m => m.status === 'open' || m.status === 'pending_game')
-      : matches.filter(m => m.status === 'completed' || m.status === 'draw');
-    
-    const container = document.getElementById('myMatchesList');
-    
-    if (filtered.length === 0) {
-      container.innerHTML = `<p class="empty-state">No ${status} matches</p>`;
+    if (matches.length === 0) {
+      container.innerHTML = '<p class="empty-state">No active matches</p>';
       return;
     }
     
-    container.innerHTML = filtered.map(match => {
-      const isCreator = match.creator_id === currentUser.id;
-      const opponent = isCreator ? match.opponent_username : match.creator_username;
-      const opponentLichess = isCreator ? match.opponent_lichess : match.creator_lichess;
+    container.innerHTML = matches.map(m => `
+      <div class="match-card active">
+        <div class="match-header">
+          <span class="opponent">vs ${escapeHtml(m.opponent_username || 'TBD')}</span>
+          <span class="match-stake">₦${formatNumber(m.stake_amount)}</span>
+        </div>
+        <div class="match-details">
+          <span>⏱️ ${m.time_control}</span>
+          <span>${m.is_rated ? '⭐ Rated' : '⚡ Casual'}</span>
+        </div>
+        <button class="btn btn-primary btn-block" onclick="showSubmitResult(${m.id})">
+          Submit Game Result
+        </button>
+      </div>
+    `).join('');
+  } catch (error) {
+    console.error('Failed to load active matches:', error);
+  }
+}
+
+// ================== CHALLENGES ==================
+
+async function loadReceivedChallenges() {
+  try {
+    const response = await fetch(`${API_BASE}/challenges/pending`, {
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    
+    const challenges = await response.json();
+    const container = document.getElementById('receivedChallenges');
+    
+    if (challenges.length === 0) {
+      container.innerHTML = '<p class="empty-state">No pending challenges received</p>';
+      return;
+    }
+    
+    container.innerHTML = challenges.map(ch => `
+      <div class="challenge-card received">
+        <div class="challenge-header">
+          <span class="challenge-from">From: ${escapeHtml(ch.creator_username)}</span>
+          <span class="challenge-stake">₦${formatNumber(ch.stake_amount)}</span>
+        </div>
+        <div class="challenge-details">
+          <span>⏱️ ${ch.time_control}</span>
+          <span>${ch.is_rated ? '⭐ Rated' : '⚡ Casual'}</span>
+        </div>
+        <div class="fee-preview">
+          <small>Winner gets: ₦${formatNumber(ch.winner_payout)}</small>
+        </div>
+        <div class="challenge-actions">
+          <button class="btn btn-success" onclick="acceptChallenge('${ch.challenge_code}')">Accept</button>
+          <button class="btn btn-outline" onclick="declineChallenge('${ch.challenge_code}')">Decline</button>
+        </div>
+      </div>
+    `).join('');
+  } catch (error) {
+    document.getElementById('receivedChallenges').innerHTML = '<p class="empty-state">Failed to load challenges</p>';
+  }
+}
+
+async function loadSentChallenges() {
+  try {
+    const response = await fetch(`${API_BASE}/challenges/sent`, {
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    
+    const challenges = await response.json();
+    const container = document.getElementById('sentChallenges');
+    
+    if (challenges.length === 0) {
+      container.innerHTML = '<p class="empty-state">No sent challenges</p>';
+      return;
+    }
+    
+    container.innerHTML = challenges.map(ch => {
+      let statusBadge = '';
+      switch (ch.status) {
+        case 'pending':
+          statusBadge = '<span class="status-badge pending">Pending</span>';
+          break;
+        case 'accepted':
+          statusBadge = '<span class="status-badge completed">Accepted</span>';
+          break;
+        case 'declined':
+          statusBadge = '<span class="status-badge declined">Declined</span>';
+          break;
+        case 'cancelled':
+          statusBadge = '<span class="status-badge">Cancelled</span>';
+          break;
+        default:
+          statusBadge = `<span class="status-badge">${ch.status}</span>`;
+      }
       
       return `
-        <div class="match-card">
-          <div class="match-header">
-            <span class="match-stake">₦${formatNumber(match.stake_amount)}</span>
-            <span class="status-badge ${match.status}">${match.status.replace('_', ' ')}</span>
+        <div class="challenge-card sent">
+          <div class="challenge-header">
+            <span class="challenge-to">To: ${escapeHtml(ch.opponent_username)}</span>
+            <span class="challenge-stake">₦${formatNumber(ch.stake_amount)}</span>
           </div>
-          <div class="match-details">
-            <span>⏱️ ${match.time_control}</span>
-            <span>${match.is_rated ? '⭐ Rated' : '⚡ Casual'}</span>
+          <div class="challenge-details">
+            <span>⏱️ ${ch.time_control}</span>
+            <span>${ch.is_rated ? '⭐ Rated' : '⚡ Casual'}</span>
           </div>
-          ${match.status === 'pending_game' ? `
-            <p style="margin: 12px 0; font-size: 14px;">
-              <strong>Opponent:</strong> ${escapeHtml(opponent || 'Waiting...')}<br>
-              ${opponentLichess ? `<span style="color: var(--text-muted);">Lichess: ${escapeHtml(opponentLichess)}</span>` : ''}
-            </p>
-            <p style="margin: 12px 0; font-size: 13px; color: var(--text-secondary);">
-              Play your ${match.time_control} game on Lichess, then submit the result below.
-            </p>
-            <button class="btn btn-primary btn-block" onclick="showSubmitResult(${match.id})">
-              Submit Game Result
-            </button>
-          ` : ''}
-          ${match.status === 'completed' || match.status === 'draw' ? `
-            <p style="margin: 12px 0; font-size: 14px;">
-              <strong>Winner:</strong> ${match.winner_id === currentUser.id ? 'You' : escapeHtml(match.winner_username || 'N/A')}<br>
-              <strong>Payout:</strong> ₦${formatNumber(match.payout_amount || 0)}
-            </p>
-            ${match.lichess_game_url ? `
-              <a href="${match.lichess_game_url}" target="_blank" class="btn btn-outline btn-sm" style="margin-top: 8px;">
-                View Game
-              </a>
-            ` : ''}
+          <div class="challenge-status">
+            ${statusBadge}
+          </div>
+          ${ch.status === 'pending' ? `
+            <button class="btn btn-outline btn-sm" onclick="cancelChallenge('${ch.challenge_code}')">Cancel</button>
           ` : ''}
         </div>
       `;
     }).join('');
   } catch (error) {
-    showToast('Failed to load your matches', 'error');
+    document.getElementById('sentChallenges').innerHTML = '<p class="empty-state">Failed to load challenges</p>';
   }
 }
 
-function switchMatchTab(status) {
-  document.querySelectorAll('#my-matchesSection .tab').forEach(t => t.classList.remove('active'));
+function switchChallengeTab(tab) {
+  document.querySelectorAll('#challengesSection .tab').forEach(t => t.classList.remove('active'));
   event.target.classList.add('active');
-  loadMyMatches(status);
+  
+  document.getElementById('receivedChallenges').classList.toggle('hidden', tab !== 'received');
+  document.getElementById('sentChallenges').classList.toggle('hidden', tab !== 'sent');
 }
 
-// ================== CREATE MATCH ==================
-
-function handleCreateMatch(event) {
-  event.preventDefault();
-  
-  const stakeAmount = parseFloat(document.getElementById('stakeAmount').value);
-  const timeControl = document.getElementById('timeControl').value;
-  const isRated = document.querySelector('input[name="isRated"]:checked').value === 'true';
-  
-  // Update fee breakdown preview
-  const totalPot = stakeAmount * 2;
-  const fee = (totalPot * 1.5) / 100;
-  const winnerPayout = totalPot - fee;
-  
-  document.getElementById('breakdownStake').textContent = `₦${formatNumber(stakeAmount)}`;
-  document.getElementById('breakdownPot').textContent = `₦${formatNumber(totalPot)}`;
-  document.getElementById('breakdownFee').textContent = `₦${formatNumber(fee)}`;
-  document.getElementById('breakdownWinner').textContent = `₦${formatNumber(winnerPayout)}`;
-  
-  // Submit match creation
-  createMatch(stakeAmount, timeControl, isRated);
-}
-
-async function createMatch(stakeAmount, timeControl, isRated) {
+async function acceptChallenge(challengeCode) {
   try {
-    const response = await fetch(`${API_BASE}/matches/create`, {
+    const response = await fetch(`${API_BASE}/challenges/${challengeCode}/accept`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authToken}`
-      },
-      body: JSON.stringify({ stake_amount: stakeAmount, time_control: timeControl, is_rated: isRated })
+      headers: { 'Authorization': `Bearer ${authToken}` }
     });
     
     const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to create match');
+      throw new Error(data.error || 'Failed to accept challenge');
     }
     
-    showToast('Match challenge created!', 'success');
-    showSection('my-matches');
+    showToast(data.message, 'success');
     loadDashboard();
-    
-    // Reset form
-    document.getElementById('createMatchForm').reset();
+    loadReceivedChallenges();
+    showSection('matches');
   } catch (error) {
     showToast(error.message, 'error');
   }
 }
 
+async function declineChallenge(challengeCode) {
+  try {
+    const response = await fetch(`${API_BASE}/challenges/${challengeCode}/decline`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}` 
+      },
+      body: JSON.stringify({})
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to decline challenge');
+    }
+    
+    showToast(data.message, 'success');
+    loadReceivedChallenges();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+async function cancelChallenge(challengeCode) {
+  try {
+    const response = await fetch(`${API_BASE}/challenges/${challengeCode}/cancel`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to cancel challenge');
+    }
+    
+    showToast(data.message, 'success');
+    loadSentChallenges();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+// ================== SEND CHALLENGE ==================
+
+function initChallengeForm() {
+  // Add event listeners for fee calculation
+  document.getElementById('challengeStake').addEventListener('input', updateChallengeFeePreview);
+}
+
+function updateChallengeFeePreview() {
+  const stake = parseFloat(document.getElementById('challengeStake').value) || 0;
+  const totalPot = stake * 2;
+  const fee = (totalPot * 1.5) / 100;
+  const winnerPayout = totalPot - fee;
+  
+  document.getElementById('challengeStakeDisplay').textContent = `₦${formatNumber(stake)}`;
+  document.getElementById('challengePotDisplay').textContent = `₦${formatNumber(totalPot)}`;
+  document.getElementById('challengeFeeDisplay').textContent = `₦${formatNumber(fee)}`;
+  document.getElementById('challengeWinnerDisplay').textContent = `₦${formatNumber(winnerPayout)}`;
+}
+
+async function handleSendChallenge(event) {
+  event.preventDefault();
+  
+  const opponent_username = document.getElementById('opponentUsername').value;
+  const stake_amount = parseFloat(document.getElementById('challengeStake').value);
+  const time_control = document.getElementById('challengeTimeControl').value;
+  const is_rated = document.querySelector('input[name="challengeRated"]:checked').value === 'true';
+  
+  try {
+    const response = await fetch(`${API_BASE}/challenges/send`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`
+      },
+      body: JSON.stringify({ opponent_username, stake_amount, time_control, is_rated })
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to send challenge');
+    }
+    
+    showToast(`Challenge sent to ${opponent_username}!`, 'success');
+    
+    // Reset form
+    document.getElementById('sendChallengeForm').reset();
+    updateChallengeFeePreview();
+    
+    // Show challenges section
+    showSection('challenges');
+    loadSentChallenges();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+// ================== MATCHES ==================
+
+async function loadActiveMatches() {
+  try {
+    const response = await fetch(`${API_BASE}/matches/active`, {
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    
+    const matches = await response.json();
+    const container = document.getElementById('activeMatchesList2');
+    
+    if (matches.length === 0) {
+      container.innerHTML = '<p class="empty-state">No active matches</p>';
+      return;
+    }
+    
+    container.innerHTML = matches.map(m => `
+      <div class="match-card active">
+        <div class="match-header">
+          <span class="opponent">vs ${escapeHtml(m.opponent_username || 'TBD')}</span>
+          <span class="match-stake">₦${formatNumber(m.stake_amount)}</span>
+        </div>
+        <div class="match-details">
+          <span>⏱️ ${m.time_control}</span>
+          <span>${m.is_rated ? '⭐ Rated' : '⚡ Casual'}</span>
+        </div>
+        <button class="btn btn-primary btn-block" onclick="showSubmitResult(${m.id})">
+          Submit Game Result
+        </button>
+      </div>
+    `).join('');
+  } catch (error) {
+    document.getElementById('activeMatchesList2').innerHTML = '<p class="empty-state">Failed to load matches</p>';
+  }
+}
+
+async function loadAwaitingMatches() {
+  try {
+    const response = await fetch(`${API_BASE}/matches/completed`, {
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    
+    const matches = await response.json();
+    
+    // Filter for awaiting_appeal status
+    const awaiting = matches.filter(m => m.status === 'awaiting_appeal');
+    const container = document.getElementById('awaitingMatchesList');
+    
+    if (awaiting.length === 0) {
+      container.innerHTML = '<p class="empty-state">No matches awaiting appeal</p>';
+      return;
+    }
+    
+    container.innerHTML = awaiting.map(m => `
+      <div class="match-card awaiting">
+        <div class="match-header">
+          <span class="opponent">vs ${escapeHtml(m.opponent_username || 'TBD')}</span>
+          <span class="match-stake">₦${formatNumber(m.stake_amount)}</span>
+        </div>
+        <div class="match-details">
+          <span>Result: ${m.winner_id ? (m.winner_id === currentUser.id ? 'You Won!' : 'You Lost') : 'Draw'}</span>
+          <span>⏰ Appeal deadline: ${formatDate(m.appeal_deadline)}</span>
+        </div>
+        ${m.status === 'awaiting_appeal' ? `
+          <button class="btn btn-warning" onclick="showAppeal(${m.id})">Submit Appeal</button>
+        ` : ''}
+        ${m.status === 'awaiting_appeal' && new Date(m.appeal_deadline) < new Date() ? `
+          <button class="btn btn-success" onclick="processDisbursement(${m.id})">Process Payout</button>
+        ` : ''}
+      </div>
+    `).join('');
+  } catch (error) {
+    document.getElementById('awaitingMatchesList').innerHTML = '<p class="empty-state">Failed to load matches</p>';
+  }
+}
+
+async function loadCompletedMatches() {
+  try {
+    const response = await fetch(`${API_BASE}/matches/completed`, {
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    
+    const matches = await response.json();
+    
+    // Filter for completed/disbursed status
+    const completed = matches.filter(m => ['completed', 'disbursed', 'draw'].includes(m.status));
+    const container = document.getElementById('completedMatchesList');
+    
+    if (completed.length === 0) {
+      container.innerHTML = '<p class="empty-state">No completed matches</p>';
+      return;
+    }
+    
+    container.innerHTML = completed.map(m => {
+      let statusClass = m.status === 'draw' ? 'draw' : 'completed';
+      return `
+        <div class="match-card completed">
+          <div class="match-header">
+            <span class="opponent">vs ${escapeHtml(m.opponent_username || 'TBD')}</span>
+            <span class="status-badge ${statusClass}">${m.status}</span>
+          </div>
+          <div class="match-details">
+            <span>⏱️ ${m.time_control}</span>
+            <span>Stake: ₦${formatNumber(m.stake_amount)}</span>
+          </div>
+          <div class="match-result">
+            <strong>${m.winner_id === currentUser.id ? '🏆 You Won!' : m.winner_id ? '❌ You Lost' : '🤝 Draw'}</strong>
+            ${m.winner_id === currentUser.id ? `<br>Payout: ₦${formatNumber(m.payout_amount || 0)}` : ''}
+          </div>
+          ${m.lichess_game_url ? `
+            <a href="${m.lichess_game_url}" target="_blank" class="btn btn-outline btn-sm" style="margin-top: 8px;">
+              View Game
+            </a>
+          ` : ''}
+        </div>
+      `;
+    }).join('');
+  } catch (error) {
+    document.getElementById('completedMatchesList').innerHTML = '<p class="empty-state">Failed to load matches</p>';
+  }
+}
+
+function switchMatchTab(tab) {
+  document.querySelectorAll('#matchesSection .tab').forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+  
+  document.getElementById('activeMatchesPanel').classList.toggle('hidden', tab !== 'active');
+  document.getElementById('awaitingMatchesPanel').classList.toggle('hidden', tab !== 'awaiting');
+  document.getElementById('completedMatchesPanel').classList.toggle('hidden', tab !== 'completed');
+  
+  if (tab === 'active') loadActiveMatches();
+  else if (tab === 'awaiting') loadAwaitingMatches();
+  else if (tab === 'completed') loadCompletedMatches();
+}
+
 // ================== SUBMIT RESULT ==================
 
 function showSubmitResult(matchId) {
-  // Find match details
-  fetch(`${API_BASE}/matches/my`, {
+  document.getElementById('submitMatchId').value = matchId;
+  
+  // Load match details
+  fetch(`${API_BASE}/matches/active`, {
     headers: { 'Authorization': `Bearer ${authToken}` }
   })
   .then(res => res.json())
@@ -413,19 +675,14 @@ function showSubmitResult(matchId) {
     const match = matches.find(m => m.id === matchId);
     if (!match) return;
     
-    document.getElementById('submitMatchId').value = matchId;
-    
-    const isCreator = match.creator_id === currentUser.id;
-    const opponent = isCreator ? match.opponent_username : match.creator_username;
-    
     document.getElementById('matchDetailsPreview').innerHTML = `
+      <p><strong>Opponent:</strong> ${escapeHtml(match.opponent_username || 'TBD')}</p>
       <p><strong>Stake:</strong> ₦${formatNumber(match.stake_amount)}</p>
       <p><strong>Time Control:</strong> ${match.time_control}</p>
-      <p><strong>Opponent:</strong> ${escapeHtml(opponent || 'TBD')}</p>
-      <p><strong>Winner Receives:</strong> ₦${formatNumber((match.stake_amount * 2) - match.dx_fee)}</p>
+      <p><strong>Winner Receives:</strong> ₦${formatNumber(match.stake_amount * 2 * 0.985)}</p>
     `;
     
-    showSection('submitResultSection');
+    showSection('submitResult');
   });
 }
 
@@ -437,7 +694,7 @@ async function handleSubmitResult(event) {
   const lichessGameUrl = document.getElementById('lichessGameUrl').value.trim();
   
   try {
-    const response = await fetch(`${API_BASE}/matches/submit-result/${matchId}`, {
+    const response = await fetch(`${API_BASE}/matches/${matchId}/submit-result`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -456,8 +713,72 @@ async function handleSubmitResult(event) {
     }
     
     showToast(data.message, 'success');
+    
+    if (data.appeal_deadline) {
+      showToast(`Appeal deadline: ${formatDate(data.appeal_deadline)}`, 'warning');
+    }
+    
     loadDashboard();
-    showSection('my-matches');
+    showSection('matches');
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+// ================== APPEAL ==================
+
+function showAppeal(matchId) {
+  document.getElementById('appealMatchId').value = matchId;
+  document.getElementById('appealSection').classList.remove('hidden');
+  document.getElementById('matchesSection').classList.add('hidden');
+}
+
+async function handleAppeal(event) {
+  event.preventDefault();
+  
+  const matchId = document.getElementById('appealMatchId').value;
+  const reason = document.getElementById('appealReason').value;
+  const evidence = document.getElementById('appealEvidence').value;
+  
+  try {
+    const response = await fetch(`${API_BASE}/matches/${matchId}/appeal`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`
+      },
+      body: JSON.stringify({ reason, evidence })
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to submit appeal');
+    }
+    
+    showToast('Appeal submitted! An admin will review.', 'success');
+    document.getElementById('appealForm').reset();
+    showSection('matches');
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+async function processDisbursement(matchId) {
+  try {
+    const response = await fetch(`${API_BASE}/matches/${matchId}/process-disbursement`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to process disbursement');
+    }
+    
+    showToast(data.message, 'success');
+    loadDashboard();
   } catch (error) {
     showToast(error.message, 'error');
   }
@@ -476,7 +797,6 @@ async function loadWallet() {
     document.getElementById('walletBalanceDisplay').textContent = formatNumber(data.available);
     document.getElementById('walletLockedDisplay').textContent = formatNumber(data.locked);
     
-    // Load transactions
     loadTransactions();
   } catch (error) {
     showToast('Failed to load wallet', 'error');
@@ -506,13 +826,13 @@ async function loadTransactions() {
           <div class="transaction-description">${escapeHtml(tx.description)}</div>
           <div class="transaction-date">${formatDate(tx.created_at)}</div>
         </div>
-        <div class="transaction-amount ${tx.type === 'deposit' || tx.type === 'winning' ? 'positive' : 'negative'}">
-          ${tx.type === 'deposit' || tx.type === 'winning' ? '+' : '-'}₦${formatNumber(tx.amount)}
+        <div class="transaction-amount ${['deposit', 'winning', 'refund'].includes(tx.type) ? 'positive' : 'negative'}">
+          ${['deposit', 'winning', 'refund'].includes(tx.type) ? '+' : '-'}₦${formatNumber(tx.amount)}
         </div>
       </div>
     `).join('');
   } catch (error) {
-    showToast('Failed to load transactions', 'error');
+    console.error('Failed to load transactions:', error);
   }
 }
 
@@ -528,7 +848,7 @@ async function handleDeposit(event) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${authToken}`
       },
-      body: JSON.stringify({ amount, payment_method: 'manual' })
+      body: JSON.stringify({ amount })
     });
     
     const data = await response.json();
@@ -570,7 +890,6 @@ async function handleWithdraw(event) {
     showToast(data.message, 'success');
     document.getElementById('withdrawAmount').value = '';
     loadWallet();
-    loadDashboard();
   } catch (error) {
     showToast(error.message, 'error');
   }
@@ -618,93 +937,70 @@ async function loadAdminStats() {
     const stats = await response.json();
     
     document.getElementById('adminTotalUsers').textContent = stats.total_users;
-    document.getElementById('adminTotalMatches').textContent = stats.total_matches;
+    document.getElementById('adminPendingChallenges').textContent = stats.pending_challenges;
+    document.getElementById('adminActiveMatches').textContent = stats.active_matches;
     document.getElementById('adminPlatformFees').textContent = formatNumber(stats.platform_fees_collected);
-    document.getElementById('adminTotalVolume').textContent = formatNumber(stats.total_volume);
     
-    // Load other admin data
-    loadAdminUsers();
-    loadAdminMatches();
-    loadAdminWithdrawals();
+    loadAdminChallenges();
+    loadAdminAppeals();
   } catch (error) {
     showToast('Failed to load admin stats', 'error');
   }
 }
 
-async function loadAdminUsers() {
+async function loadAdminChallenges() {
   try {
-    const response = await fetch(`${API_BASE}/admin/users`, {
+    const response = await fetch(`${API_BASE}/admin/challenges`, {
       headers: { 'Authorization': `Bearer ${authToken}` }
     });
     
-    const users = await response.json();
+    const challenges = await response.json();
     
-    document.getElementById('adminUsersList').innerHTML = users.map(user => `
+    document.getElementById('adminChallengesList').innerHTML = challenges.map(ch => `
       <tr>
-        <td>${user.id}</td>
-        <td>${escapeHtml(user.username)}</td>
-        <td>${escapeHtml(user.email)}</td>
-        <td>${escapeHtml(user.lichess_username || '-')}</td>
-        <td>₦${formatNumber(user.wallet_balance)}</td>
-        <td>${user.matches_won + user.matches_lost + user.matches_draw}</td>
-        <td>${user.is_admin ? 'Admin' : 'User'}</td>
+        <td>${ch.id}</td>
+        <td>${escapeHtml(ch.creator_username)}</td>
+        <td>${escapeHtml(ch.opponent_username)}</td>
+        <td>₦${formatNumber(ch.stake_amount)}</td>
+        <td><span class="status-badge ${ch.status}">${ch.status}</span></td>
+        <td>${ch.expires_in_minutes ? `${ch.expires_in_minutes}m` : '-'}</td>
       </tr>
     `).join('');
   } catch (error) {
-    console.error('Failed to load users:', error);
+    console.error('Failed to load admin challenges:', error);
   }
 }
 
-async function loadAdminMatches() {
+async function loadAdminAppeals() {
   try {
-    const response = await fetch(`${API_BASE}/admin/matches`, {
+    const response = await fetch(`${API_BASE}/admin/appeals`, {
       headers: { 'Authorization': `Bearer ${authToken}` }
     });
     
-    const matches = await response.json();
+    const appeals = await response.json();
     
-    document.getElementById('adminMatchesList').innerHTML = matches.map(match => `
-      <tr>
-        <td>${match.id}</td>
-        <td>${escapeHtml(match.creator_username)}</td>
-        <td>${escapeHtml(match.opponent_username || '-')}</td>
-        <td>₦${formatNumber(match.stake_amount)}</td>
-        <td><span class="status-badge ${match.status}">${match.status}</span></td>
-        <td>${formatDate(match.created_at)}</td>
-      </tr>
-    `).join('');
-  } catch (error) {
-    console.error('Failed to load matches:', error);
-  }
-}
-
-async function loadAdminWithdrawals() {
-  try {
-    const response = await fetch(`${API_BASE}/admin/withdrawals`, {
-      headers: { 'Authorization': `Bearer ${authToken}` }
-    });
-    
-    const withdrawals = await response.json();
-    
-    if (withdrawals.length === 0) {
-      document.getElementById('adminWithdrawalsList').innerHTML = '<tr><td colspan="5">No pending withdrawals</td></tr>';
+    if (appeals.length === 0) {
+      document.getElementById('adminAppealsList').innerHTML = '<tr><td colspan="6">No pending appeals</td></tr>';
       return;
     }
     
-    document.getElementById('adminWithdrawalsList').innerHTML = withdrawals.map(w => `
+    document.getElementById('adminAppealsList').innerHTML = appeals.map(a => `
       <tr>
-        <td>${w.id}</td>
-        <td>${escapeHtml(w.username)}</td>
-        <td>₦${formatNumber(w.amount)}</td>
-        <td>${formatDate(w.created_at)}</td>
+        <td>${a.id}</td>
+        <td>${escapeHtml(a.username)}</td>
+        <td>${a.match?.id || '-'}</td>
+        <td>${escapeHtml(a.reason?.substring(0, 30)) || '-'}...</td>
+        <td><span class="status-badge ${a.status}">${a.status}</span></td>
         <td>
-          <button class="btn btn-success btn-sm" onclick="approveWithdrawal(${w.id})">Approve</button>
-          <button class="btn btn-danger btn-sm" onclick="rejectWithdrawal(${w.id})">Reject</button>
+          ${a.status === 'pending' ? `
+            <button class="btn btn-success btn-sm" onclick="resolveAppeal(${a.id}, 'upheld')">Uphold</button>
+            <button class="btn btn-danger btn-sm" onclick="resolveAppeal(${a.id}, 'rejected')">Reject</button>
+          ` : a.status}
         </td>
       </tr>
     `).join('');
   } catch (error) {
-    console.error('Failed to load withdrawals:', error);
+    console.error('Failed to load appeals:', error);
   }
 }
 
@@ -716,41 +1012,28 @@ function switchAdminTab(tab) {
   
   const panelMap = {
     'stats': 'adminStatsPanel',
-    'users': 'adminUsersPanel',
-    'matchadmin': 'adminMatchadminPanel',
-    'withdrawals': 'adminWithdrawalsPanel'
+    'challenges': 'adminChallengesPanel',
+    'appeals': 'adminAppealsPanel'
   };
   
   document.getElementById(panelMap[tab])?.classList.remove('hidden');
 }
 
-async function approveWithdrawal(id) {
+async function resolveAppeal(appealId, decision) {
   try {
-    const response = await fetch(`${API_BASE}/admin/withdrawals/${id}/approve`, {
+    const response = await fetch(`${API_BASE}/admin/appeals/${appealId}/resolve`, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${authToken}` }
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`
+      },
+      body: JSON.stringify({ decision })
     });
     
-    if (!response.ok) throw new Error('Failed to approve');
+    if (!response.ok) throw new Error('Failed to resolve appeal');
     
-    showToast('Withdrawal approved', 'success');
-    loadAdminWithdrawals();
-  } catch (error) {
-    showToast(error.message, 'error');
-  }
-}
-
-async function rejectWithdrawal(id) {
-  try {
-    const response = await fetch(`${API_BASE}/admin/withdrawals/${id}/reject`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${authToken}` }
-    });
-    
-    if (!response.ok) throw new Error('Failed to reject');
-    
-    showToast('Withdrawal rejected', 'success');
-    loadAdminWithdrawals();
+    showToast(`Appeal ${decision}`, 'success');
+    loadAdminAppeals();
   } catch (error) {
     showToast(error.message, 'error');
   }
@@ -759,10 +1042,11 @@ async function rejectWithdrawal(id) {
 // ================== UTILITIES ==================
 
 function formatNumber(num) {
-  return Math.floor(num).toLocaleString('en-NG');
+  return Math.floor(num || 0).toLocaleString('en-NG');
 }
 
 function formatDate(dateString) {
+  if (!dateString) return '-';
   return new Date(dateString).toLocaleDateString('en-NG', {
     year: 'numeric',
     month: 'short',
@@ -785,6 +1069,7 @@ function getTransactionIcon(type) {
     'withdrawal': '↑',
     'platform_fee': '💰',
     'winning': '🏆',
+    'refund': '↩️',
     'stake': '🎮'
   };
   return icons[type] || '•';

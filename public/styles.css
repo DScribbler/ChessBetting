@@ -145,6 +145,15 @@ body {
   background: var(--secondary-dark);
 }
 
+.btn-warning {
+  background: var(--warning);
+  color: #333;
+}
+
+.btn-warning:hover {
+  background: #e0a800;
+}
+
 .btn-outline {
   background: transparent;
   border: 1px solid var(--border-dark);

@@ -16,8 +16,9 @@
     </div>
     <div class="nav-links" id="navLinks">
       <a href="#" onclick="showSection('dashboard')" class="nav-link active" data-section="dashboard">Dashboard</a>
+      <a href="#" onclick="showSection('challenges')" class="nav-link" data-section="challenges">Challenges</a>
+      <a href="#" onclick="showSection('send-challenge')" class="nav-link" data-section="send-challenge">New Challenge</a>
       <a href="#" onclick="showSection('matches')" class="nav-link" data-section="matches">Matches</a>
-      <a href="#" onclick="showSection('create')" class="nav-link" data-section="create">Create Match</a>
       <a href="#" onclick="showSection('wallet')" class="nav-link" data-section="wallet">Wallet</a>
       <a href="#" onclick="showSection('admin')" class="nav-link admin-only" data-section="admin">Admin</a>
     </div>
@@ -48,7 +49,7 @@
       <!-- Login Form -->
       <form id="loginForm" class="auth-form" onsubmit="handleLogin(event)">
         <div class="form-group">
-          <label for="loginUsername">Username or Email</label>
+          <label for="loginUsername">Username</label>
           <input type="text" id="loginUsername" required placeholder="Enter your username">
         </div>
         <div class="form-group">
@@ -61,16 +62,26 @@
       <!-- Register Form -->
       <form id="registerForm" class="auth-form hidden" onsubmit="handleRegister(event)">
         <div class="form-group">
-          <label for="registerUsername">Username</label>
-          <input type="text" id="registerUsername" required placeholder="Choose a username" minlength="3">
+          <label for="registerUsername">Username *</label>
+          <input type="text" id="registerUsername" required placeholder="3-20 alphanumeric characters" minlength="3" maxlength="20">
+          <small>Unique username (letters, numbers, underscore)</small>
         </div>
         <div class="form-group">
-          <label for="registerEmail">Email</label>
-          <input type="email" id="registerEmail" required placeholder="Enter your email">
+          <label for="registerFullName">Full Name *</label>
+          <input type="text" id="registerFullName" required placeholder="Your full name" minlength="2" maxlength="100">
         </div>
         <div class="form-group">
-          <label for="registerPassword">Password</label>
-          <input type="password" id="registerPassword" required placeholder="Create a password" minlength="6">
+          <label for="registerEmail">Email *</label>
+          <input type="email" id="registerEmail" required placeholder="your@email.com">
+        </div>
+        <div class="form-group">
+          <label for="registerPhone">Phone Number *</label>
+          <input type="tel" id="registerPhone" required placeholder="e.g., 08012345678" minlength="10" maxlength="15">
+          <small>Required for verification</small>
+        </div>
+        <div class="form-group">
+          <label for="registerPassword">Password *</label>
+          <input type="password" id="registerPassword" required placeholder="Min 6 characters" minlength="6">
         </div>
         <button type="submit" class="btn btn-primary btn-block">Create Account</button>
       </form>
@@ -94,7 +105,7 @@
       <div class="stat-card">
         <div class="stat-icon">💰</div>
         <div class="stat-content">
-          <span class="stat-label">Wallet Balance</span>
+          <span class="stat-label">Available Balance</span>
           <span class="stat-value">₦<span id="walletBalance">0</span></span>
         </div>
       </div>
@@ -125,22 +136,30 @@
     <div class="quick-actions">
       <h3>Quick Actions</h3>
       <div class="actions-grid">
-        <button class="action-card" onclick="showSection('create')">
+        <button class="action-card" onclick="showSection('send-challenge')">
           <span class="action-icon">🎮</span>
-          <span class="action-text">Create Match</span>
+          <span class="action-text">Send Challenge</span>
+        </button>
+        <button class="action-card" onclick="showSection('challenges')">
+          <span class="action-icon">📋</span>
+          <span class="action-text">View Challenges</span>
         </button>
         <button class="action-card" onclick="showSection('matches')">
-          <span class="action-icon">📋</span>
-          <span class="action-text">Browse Challenges</span>
+          <span class="action-icon">⚔️</span>
+          <span class="action-text">Active Matches</span>
         </button>
         <button class="action-card" onclick="showSection('wallet')">
           <span class="action-icon">💳</span>
           <span class="action-text">Add Funds</span>
         </button>
-        <button class="action-card" onclick="showSection('my-matches')">
-          <span class="action-icon">📜</span>
-          <span class="action-text">My Matches</span>
-        </button>
+      </div>
+    </div>
+
+    <!-- Pending Challenges -->
+    <div class="pending-challenges-section">
+      <h3>Pending Challenges</h3>
+      <div id="pendingChallengesList" class="challenges-list">
+        <p class="empty-state">No pending challenges</p>
       </div>
     </div>
 
@@ -153,39 +172,69 @@
     </div>
   </div>
 
-  <!-- Create Match Section -->
-  <div id="createSection" class="section-container hidden">
+  <!-- Challenges Section -->
+  <div id="challengesSection" class="section-container hidden">
     <div class="section-header">
-      <h2>Create Match Challenge</h2>
-      <p>Set up a staking challenge for other players</p>
+      <h2>Challenges</h2>
+      <p>Manage your chess challenges</p>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" onclick="switchChallengeTab('received')">Received</button>
+      <button class="tab" onclick="switchChallengeTab('sent')">Sent</button>
+    </div>
+
+    <div id="receivedChallenges" class="challenges-list">
+      <p class="empty-state">Loading...</p>
+    </div>
+
+    <div id="sentChallenges" class="challenges-list hidden">
+      <p class="empty-state">Loading...</p>
+    </div>
+  </div>
+
+  <!-- Send Challenge Section -->
+  <div id="send-challengeSection" class="section-container hidden">
+    <div class="section-header">
+      <h2>Send Challenge</h2>
+      <p>Challenge another player to a chess match</p>
     </div>
 
     <div class="form-card">
-      <form id="createMatchForm" onsubmit="handleCreateMatch(event)">
+      <form id="sendChallengeForm" onsubmit="handleSendChallenge(event)">
         <div class="form-group">
-          <label for="stakeAmount">Stake Amount (₦)</label>
-          <input type="number" id="stakeAmount" required min="500" placeholder="Minimum ₦500">
+          <label for="opponentUsername">Opponent Username *</label>
+          <input type="text" id="opponentUsername" required placeholder="Enter opponent's DX username">
+          <small>Must be a registered DX user</small>
+        </div>
+
+        <div class="form-group">
+          <label for="challengeStake">Stake Amount (₦) *</label>
+          <input type="number" id="challengeStake" required min="500" placeholder="Minimum ₦500">
           <small>Minimum stake: ₦500</small>
         </div>
 
         <div class="form-group">
-          <label for="timeControl">Time Control</label>
-          <select id="timeControl" required>
-            <option value="blitz">Blitz (3+2, 3+0)</option>
-            <option value="rapid">Rapid (10+0, 10+5, 15+10)</option>
-            <option value="classical">Classical (30+0, 30+20)</option>
+          <label for="challengeTimeControl">Time Control *</label>
+          <select id="challengeTimeControl" required>
+            <option value="3+2">Blitz (3+2)</option>
+            <option value="3+0">Blitz (3+0)</option>
+            <option value="10+5">Rapid (10+5)</option>
+            <option value="10+0">Rapid (10+0)</option>
+            <option value="15+10">Rapid (15+10)</option>
+            <option value="30+0">Classical (30+0)</option>
           </select>
         </div>
 
         <div class="form-group">
-          <label>Game Type</label>
+          <label>Game Type *</label>
           <div class="radio-group">
             <label class="radio-label">
-              <input type="radio" name="isRated" value="false" checked>
+              <input type="radio" name="challengeRated" value="false" checked>
               <span>Casual</span>
             </label>
             <label class="radio-label">
-              <input type="radio" name="isRated" value="true">
+              <input type="radio" name="challengeRated" value="true">
               <span>Rated</span>
             </label>
           </div>
@@ -196,62 +245,59 @@
           <h4>Fee Breakdown</h4>
           <div class="breakdown-item">
             <span>Your Stake:</span>
-            <span id="breakdownStake">₦0</span>
+            <span id="challengeStakeDisplay">₦0</span>
           </div>
           <div class="breakdown-item">
             <span>Total Pot:</span>
-            <span id="breakdownPot">₦0</span>
+            <span id="challengePotDisplay">₦0</span>
           </div>
           <div class="breakdown-item fee">
             <span>DX Platform Fee (1.5%):</span>
-            <span id="breakdownFee">₦0</span>
+            <span id="challengeFeeDisplay">₦0</span>
           </div>
           <div class="breakdown-item total">
             <span>Winner Receives:</span>
-            <span id="breakdownWinner">₦0</span>
+            <span id="challengeWinnerDisplay">₦0</span>
           </div>
         </div>
 
-        <button type="submit" class="btn btn-primary btn-block">Create Challenge</button>
+        <button type="submit" class="btn btn-primary btn-block">Send Challenge</button>
       </form>
     </div>
   </div>
 
-  <!-- Browse Matches Section -->
+  <!-- Matches Section -->
   <div id="matchesSection" class="section-container hidden">
     <div class="section-header">
-      <h2>Open Challenges</h2>
-      <p>Accept a challenge and stake your skills</p>
-    </div>
-
-    <div class="filters-bar">
-      <select id="matchFilterTime" onchange="loadOpenMatches()">
-        <option value="all">All Time Controls</option>
-        <option value="blitz">Blitz</option>
-        <option value="rapid">Rapid</option>
-        <option value="classical">Classical</option>
-      </select>
-    </div>
-
-    <div id="openMatchesList" class="matches-grid">
-      <p class="empty-state">No open challenges available</p>
-    </div>
-  </div>
-
-  <!-- My Matches Section -->
-  <div id="my-matchesSection" class="section-container hidden">
-    <div class="section-header">
-      <h2>My Matches</h2>
-      <p>Track your match history</p>
+      <h2>Matches</h2>
+      <p>Track your chess matches</p>
     </div>
 
     <div class="tabs">
-      <button class="tab active" onclick="switchMatchTab('pending')">Pending</button>
+      <button class="tab active" onclick="switchMatchTab('active')">Active</button>
+      <button class="tab" onclick="switchMatchTab('awaiting')">Awaiting Appeal</button>
       <button class="tab" onclick="switchMatchTab('completed')">Completed</button>
     </div>
 
-    <div id="myMatchesList" class="matches-list">
-      <p class="empty-state">No matches yet</p>
+    <!-- Active Matches -->
+    <div id="activeMatchesPanel">
+      <div id="activeMatchesList2" class="matches-list">
+        <p class="empty-state">Loading...</p>
+      </div>
+    </div>
+
+    <!-- Awaiting Appeal Matches -->
+    <div id="awaitingMatchesPanel" class="hidden">
+      <div id="awaitingMatchesList" class="matches-list">
+        <p class="empty-state">Loading...</p>
+      </div>
+    </div>
+
+    <!-- Completed Matches -->
+    <div id="completedMatchesPanel" class="hidden">
+      <div id="completedMatchesList" class="matches-list">
+        <p class="empty-state">Loading...</p>
+      </div>
     </div>
   </div>
 
@@ -271,7 +317,7 @@
         </div>
 
         <div class="form-group">
-          <label for="lichessGameId">Lichess Game ID</label>
+          <label for="lichessGameId">Lichess Game ID *</label>
           <input type="text" id="lichessGameId" required placeholder="e.g., abc123def">
           <small>Find this in the game URL: lichess.org/abc123def</small>
         </div>
@@ -282,6 +328,32 @@
         </div>
 
         <button type="submit" class="btn btn-primary btn-block">Verify & Submit Result</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Appeal Section -->
+  <div id="appealSection" class="section-container hidden">
+    <div class="section-header">
+      <h2>Submit Appeal</h2>
+      <p>Appeal the game result if you believe there was an error</p>
+    </div>
+
+    <div class="form-card">
+      <form id="appealForm" onsubmit="handleAppeal(event)">
+        <input type="hidden" id="appealMatchId">
+        
+        <div class="form-group">
+          <label for="appealReason">Reason for Appeal *</label>
+          <textarea id="appealReason" required placeholder="Explain why you are appealing..." rows="4"></textarea>
+        </div>
+
+        <div class="form-group">
+          <label for="appealEvidence">Evidence (optional)</label>
+          <textarea id="appealEvidence" placeholder="Provide any evidence to support your appeal..." rows="3"></textarea>
+        </div>
+
+        <button type="submit" class="btn btn-warning btn-block">Submit Appeal</button>
       </form>
     </div>
   </div>
@@ -346,9 +418,8 @@
 
     <div class="admin-tabs">
       <button class="admin-tab active" onclick="switchAdminTab('stats')">Stats</button>
-      <button class="admin-tab" onclick="switchAdminTab('users')">Users</button>
-      <button class="admin-tab" onclick="switchAdminTab('matchadmin')">Matches</button>
-      <button class="admin-tab" onclick="switchAdminTab('withdrawals')">Withdrawals</button>
+      <button class="admin-tab" onclick="switchAdminTab('challenges')">Challenges</button>
+      <button class="admin-tab" onclick="switchAdminTab('appeals')">Appeals</button>
     </div>
 
     <!-- Stats Panel -->
@@ -362,8 +433,14 @@
         </div>
         <div class="stat-card">
           <div class="stat-content">
-            <span class="stat-label">Total Matches</span>
-            <span class="stat-value" id="adminTotalMatches">0</span>
+            <span class="stat-label">Pending Challenges</span>
+            <span class="stat-value" id="adminPendingChallenges">0</span>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-content">
+            <span class="stat-label">Active Matches</span>
+            <span class="stat-value" id="adminActiveMatches">0</span>
           </div>
         </div>
         <div class="stat-card">
@@ -372,68 +449,43 @@
             <span class="stat-value">₦<span id="adminPlatformFees">0</span></span>
           </div>
         </div>
-        <div class="stat-card">
-          <div class="stat-content">
-            <span class="stat-label">Total Volume</span>
-            <span class="stat-value">₦<span id="adminTotalVolume">0</span></span>
-          </div>
-        </div>
       </div>
     </div>
 
-    <!-- Users Panel -->
-    <div id="adminUsersPanel" class="admin-panel hidden">
+    <!-- Challenges Panel -->
+    <div id="adminChallengesPanel" class="admin-panel hidden">
       <div class="table-container">
         <table class="data-table">
           <thead>
             <tr>
               <th>ID</th>
-              <th>Username</th>
-              <th>Email</th>
-              <th>Lichess</th>
-              <th>Balance</th>
-              <th>Matches</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody id="adminUsersList"></tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- Matches Panel -->
-    <div id="adminMatchadminPanel" class="admin-panel hidden">
-      <div class="table-container">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Creator</th>
-              <th>Opponent</th>
+              <th>From</th>
+              <th>To</th>
               <th>Stake</th>
               <th>Status</th>
-              <th>Created</th>
+              <th>Expires</th>
             </tr>
           </thead>
-          <tbody id="adminMatchesList"></tbody>
+          <tbody id="adminChallengesList"></tbody>
         </table>
       </div>
     </div>
 
-    <!-- Withdrawals Panel -->
-    <div id="adminWithdrawalsPanel" class="admin-panel hidden">
+    <!-- Appeals Panel -->
+    <div id="adminAppealsPanel" class="admin-panel hidden">
       <div class="table-container">
         <table class="data-table">
           <thead>
             <tr>
               <th>ID</th>
               <th>User</th>
-              <th>Amount</th>
-              <th>Date</th>
+              <th>Match</th>
+              <th>Reason</th>
+              <th>Status</th>
               <th>Actions</th>
             </tr>
           </thead>
-          <tbody id="adminWithdrawalsList"></tbody>
+          <tbody id="adminAppealsList"></tbody>
         </table>
       </div>
     </div>
