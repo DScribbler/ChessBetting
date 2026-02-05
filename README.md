@@ -6,6 +6,32 @@
 
 DX is a web-based platform that enables chess players to stake money against each other while playing chess games on Lichess. Instead of free games, two players agree on a stake amount (minimum ₦500), play on Lichess, and the winner receives the pot minus a transparent DX platform fee.
 
+## 🚀 Deployment Options
+
+### Option 1: Render.com (Recommended)
+1. Create a free account at [render.com](https://render.com)
+2. Connect your GitHub repository
+3. Create a new Web Service:
+   - Build Command: `npm install`
+   - Start Command: `npm start`
+   - Add a Disk (1GB) mounted at `/app/data` for persistent database
+4. Deploy - your app will be live at `https://your-service-name.onrender.com`
+
+### Option 2: Railway.app
+1. Create a free account at [railway.app](https://railway.app)
+2. Click "Deploy from GitHub repo"
+3. Select your repository
+4. Deploy - your app will be live at `https://your-project-name.up.railway.app`
+
+### Option 3: Local Development
+```bash
+git clone <your-repo-url>
+cd ChessBetting
+npm install
+npm start
+```
+Server runs at http://localhost:3000
+
 ## 🎯 Features
 
 ### Core Features
@@ -28,35 +54,6 @@ DX is a web-based platform that enables chess players to stake money against eac
 - Wallet & transaction control
 - Withdrawal approval/rejection
 - Platform fee tracking
-
-## 🚀 Quick Start
-
-### Prerequisites
-- Node.js 18+ 
-- npm or yarn
-
-### Installation
-
-```bash
-# Clone the repository
-git clone <your-repo-url>
-cd ChessBetting
-
-# Install dependencies
-npm install
-
-# Start the server
-npm start
-```
-
-The server will start at `http://localhost:3000`
-
-### First Run Setup
-
-1. Register a new account at `/`
-2. Link your Lichess username when prompted
-3. Deposit funds to your wallet
-4. Create a match challenge or accept one
 
 ## 📖 How It Works
 
@@ -92,7 +89,7 @@ The server will start at `http://localhost:3000`
 ## 🛠️ Tech Stack
 
 - **Backend:** Node.js + Express
-- **Database:** SQLite (better-sqlite3)
+- **Database:** JSON file-based storage (persistent)
 - **Frontend:** Vanilla HTML/CSS/JS
 - **Authentication:** JWT
 - **External API:** Lichess API
@@ -106,6 +103,7 @@ ChessBetting/
 │   ├── styles.css      # Styling
 │   └── app.js          # Frontend logic
 ├── server.js           # Main server file
+├── render.yaml         # Render deployment config
 ├── package.json        # Dependencies
 ├── .gitignore          # Git ignore rules
 └── README.md           # This file
@@ -116,7 +114,7 @@ ChessBetting/
 - **MVP Version:** This is a minimum viable product for demonstration
 - **No real payments:** Wallet deposits/withdrawals are simulated
 - **Lichess verification:** Uses Lichess public API for game verification
-- **Admin account:** Create via direct database insert or modify user
+- **Admin account:** Create via direct database edit or register and manually update
 
 ## 🔒 Security Considerations
 

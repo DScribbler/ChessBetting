@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: dx-chess-staking
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        fromService:
+          name: dx-chess-staking
+          property: port
+    disk:
+      name: data
+      mountPath: /app/data
+      sizeGB: 1

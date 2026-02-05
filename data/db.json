@@ -1,0 +1,88 @@
+{
+  "users": [
+    {
+      "username": "admin",
+      "email": "damienjosh10@gmail.com",
+      "password_hash": "$2a$10$0jCbwNzm6bSXZrWpJ0bxtuly8lNwZFxssBLhDlA0X/Gi2ah1PGswy",
+      "lichess_username": null,
+      "lichess_verified": 0,
+      "wallet_balance": 3351,
+      "locked_balance": 1050,
+      "total_staked": 0,
+      "total_winnings": 0,
+      "matches_won": 0,
+      "matches_lost": 0,
+      "matches_draw": 0,
+      "is_admin": 0,
+      "id": 1,
+      "created_at": "2026-02-05T02:49:48.091Z"
+    }
+  ],
+  "matches": [
+    {
+      "challenge_id": "DXML8V0R5NNHEK9J",
+      "creator_id": 1,
+      "opponent_id": null,
+      "stake_amount": 500,
+      "time_control": "blitz",
+      "is_rated": 0,
+      "status": "open",
+      "winner_id": null,
+      "lichess_game_id": null,
+      "lichess_game_url": null,
+      "dx_fee": 15,
+      "payout_amount": 0,
+      "id": 1,
+      "created_at": "2026-02-05T02:51:11.869Z"
+    },
+    {
+      "challenge_id": "DXML8VCQKTU5WGQ2",
+      "creator_id": 1,
+      "opponent_id": null,
+      "stake_amount": 550,
+      "time_control": "blitz",
+      "is_rated": 1,
+      "status": "open",
+      "winner_id": null,
+      "lichess_game_id": null,
+      "lichess_game_url": null,
+      "dx_fee": 16.5,
+      "payout_amount": 0,
+      "id": 2,
+      "created_at": "2026-02-05T03:00:30.990Z"
+    }
+  ],
+  "transactions": [
+    {
+      "user_id": 1,
+      "type": "deposit",
+      "amount": 200,
+      "description": "Wallet deposit",
+      "reference_id": "DEP1770259816942",
+      "status": "completed",
+      "id": 1,
+      "created_at": "2026-02-05T02:50:16.942Z"
+    },
+    {
+      "user_id": 1,
+      "type": "deposit",
+      "amount": 5000,
+      "description": "Wallet deposit",
+      "reference_id": "DEP1770259849046",
+      "status": "completed",
+      "id": 2,
+      "created_at": "2026-02-05T02:50:49.046Z"
+    },
+    {
+      "user_id": 1,
+      "type": "withdrawal",
+      "amount": 799,
+      "description": "Withdrawal request",
+      "reference_id": "WTH1770259888703",
+      "status": "pending",
+      "id": 3,
+      "created_at": "2026-02-05T02:51:28.703Z"
+    }
+  ],
+  "admin_logs": []
+}
