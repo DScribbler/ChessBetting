@@ -1,11 +1,10 @@
 // DX - Peer-to-Peer Chess Staking Platform (MVP)
-// Main Server Entry Point - Using sql.js (pure JS SQLite)
+// Main Server Entry Point - Using file-based JSON storage
 
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
-const initSqlJs = require('sql.js');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const axios = require('axios');
@@ -16,18 +15,77 @@ const PORT = process.env.PORT || 3000;
 // JWT Secret
 const JWT_SECRET = process.env.JWT_SECRET || 'dx-chess-mvp-secret-2024';
 
-// Database path
-const DB_PATH = path.join(__dirname, 'dx.db');
-
-let db;
+// Data file path
+const DATA_DIR = path.join(__dirname, 'data');
+const DB_FILE = path.join(DATA_DIR, 'db.json');
 
 // Configuration
 const CONFIG = {
   MIN_STAKE: 500,
   PLATFORM_FEE_PERCENTAGE: 1.5,
-  LICHESS_API_BASE: 'https://lichess.org/api',
-  MATCH_TIMEOUT_HOURS: 24
+  LICHESS_API_BASE: 'https://lichess.org/api'
 };
+
+// ================== DATABASE (JSON FILE-BASED) ==================
+
+let db = {
+  users: [],
+  matches: [],
+  transactions: [],
+  admin_logs: []
+};
+
+function loadDatabase() {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+  if (fs.existsSync(DB_FILE)) {
+    try {
+      db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+    } catch (e) {
+      console.error('Failed to load database:', e);
+    }
+  }
+}
+
+function saveDatabase() {
+  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+}
+
+function generateId(collection) {
+  const ids = collection.map(item => item.id);
+  return ids.length > 0 ? Math.max(...ids) + 1 : 1;
+}
+
+function findById(collection, id) {
+  return collection.find(item => item.id === id);
+}
+
+function findOne(collection, predicate) {
+  return collection.find(predicate);
+}
+
+function findAll(collection, predicate = () => true) {
+  return collection.filter(predicate);
+}
+
+function insert(collection, item) {
+  item.id = generateId(collection);
+  item.created_at = new Date().toISOString();
+  collection.push(item);
+  saveDatabase();
+  return item;
+}
+
+function update(collection, id, updates) {
+  const index = collection.findIndex(item => item.id === id);
+  if (index !== -1) {
+    collection[index] = { ...collection[index], ...updates, updated_at: new Date().toISOString() };
+    saveDatabase();
+    return collection[index];
+  }
+  return null;
+}
 
 // ================== HELPER FUNCTIONS ==================
 
@@ -47,123 +105,6 @@ async function fetchLichessGame(gameId) {
     console.error('Lichess API error:', error.message);
     return null;
   }
-}
-
-// ================== DATABASE HELPERS ==================
-
-async function initDatabase() {
-  const SQL = await initSqlJs();
-  
-  // Load existing database or create new one
-  if (fs.existsSync(DB_PATH)) {
-    const buffer = fs.readFileSync(DB_PATH);
-    db = new SQL.Database(buffer);
-  } else {
-    db = new SQL.Database();
-  }
-  
-  // Create tables
-  db.run(`
-    CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      username TEXT UNIQUE NOT NULL,
-      email TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      lichess_username TEXT,
-      lichess_verified INTEGER DEFAULT 0,
-      wallet_balance REAL DEFAULT 0,
-      locked_balance REAL DEFAULT 0,
-      total_staked REAL DEFAULT 0,
-      total_winnings REAL DEFAULT 0,
-      matches_won INTEGER DEFAULT 0,
-      matches_lost INTEGER DEFAULT 0,
-      matches_draw INTEGER DEFAULT 0,
-      is_admin INTEGER DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-  
-  db.run(`
-    CREATE TABLE IF NOT EXISTS matches (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      challenge_id TEXT UNIQUE NOT NULL,
-      creator_id INTEGER NOT NULL,
-      opponent_id INTEGER,
-      stake_amount REAL NOT NULL,
-      time_control TEXT NOT NULL,
-      is_rated INTEGER DEFAULT 0,
-      status TEXT DEFAULT 'open',
-      winner_id INTEGER,
-      lichess_game_id TEXT,
-      lichess_game_url TEXT,
-      dx_fee REAL DEFAULT 0,
-      payout_amount REAL DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      completed_at DATETIME
-    )
-  `);
-  
-  db.run(`
-    CREATE TABLE IF NOT EXISTS transactions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      type TEXT NOT NULL,
-      amount REAL NOT NULL,
-      description TEXT,
-      reference_id TEXT,
-      status TEXT DEFAULT 'completed',
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-  
-  db.run(`
-    CREATE TABLE IF NOT EXISTS admin_logs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      admin_id INTEGER NOT NULL,
-      action TEXT NOT NULL,
-      details TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-  
-  saveDatabase();
-  console.log('Database initialized');
-}
-
-function saveDatabase() {
-  const data = db.export();
-  const buffer = Buffer.from(data);
-  fs.writeFileSync(DB_PATH, buffer);
-}
-
-function getOne(sql, params = []) {
-  const stmt = db.prepare(sql);
-  stmt.bind(params);
-  if (stmt.step()) {
-    const row = stmt.getAsObject();
-    stmt.free();
-    return row;
-  }
-  stmt.free();
-  return null;
-}
-
-function getAll(sql, params = []) {
-  const stmt = db.prepare(sql);
-  stmt.bind(params);
-  const results = [];
-  while (stmt.step()) {
-    results.push(stmt.getAsObject());
-  }
-  stmt.free();
-  return results;
-}
-
-function run(sql, params = []) {
-  db.run(sql, params);
-  saveDatabase();
-  return { lastInsertRowid: db.exec("SELECT last_insert_rowid()")[0]?.values[0]?.[0] };
 }
 
 // ================== MIDDLEWARE ==================
@@ -210,20 +151,34 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).json({ error: 'Password must be at least 6 characters' });
     }
     
-    const existingUser = getOne('SELECT id FROM users WHERE username = ? OR email = ?', [username, email]);
+    const existingUser = findOne(db.users, u => u.username === username || u.email === email);
     if (existingUser) {
       return res.status(400).json({ error: 'Username or email already exists' });
     }
     
     const passwordHash = await bcrypt.hash(password, 10);
-    const result = run('INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)', [username, email, passwordHash]);
+    const user = insert(db.users, {
+      username,
+      email,
+      password_hash: passwordHash,
+      lichess_username: null,
+      lichess_verified: 0,
+      wallet_balance: 0,
+      locked_balance: 0,
+      total_staked: 0,
+      total_winnings: 0,
+      matches_won: 0,
+      matches_lost: 0,
+      matches_draw: 0,
+      is_admin: 0
+    });
     
-    const token = jwt.sign({ id: result.lastInsertRowid, username }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ id: user.id, username }, JWT_SECRET, { expiresIn: '7d' });
     
     res.status(201).json({
       message: 'Registration successful',
       token,
-      user: { id: result.lastInsertRowid, username, email }
+      user: { id: user.id, username, email }
     });
   } catch (error) {
     console.error('Registration error:', error);
@@ -235,7 +190,7 @@ app.post('/api/auth/login', async (req, res) => {
   try {
     const { username, password } = req.body;
     
-    const user = getOne('SELECT * FROM users WHERE username = ? OR email = ?', [username, username]);
+    const user = findOne(db.users, u => u.username === username || u.email === username);
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -273,12 +228,7 @@ app.post('/api/auth/login', async (req, res) => {
 // ================== USER ROUTES ==================
 
 app.get('/api/user/profile', authenticateToken, (req, res) => {
-  const user = getOne(`
-    SELECT id, username, email, lichess_username, lichess_verified, 
-           wallet_balance, locked_balance, total_staked, total_winnings,
-           matches_won, matches_lost, matches_draw, created_at
-    FROM users WHERE id = ?
-  `, [req.user.id]);
+  const user = findById(db.users, req.user.id);
   
   if (!user) {
     return res.status(404).json({ error: 'User not found' });
@@ -301,8 +251,10 @@ app.post('/api/user/lichess-link', authenticateToken, (req, res) => {
     return res.status(400).json({ error: 'Invalid Lichess username format' });
   }
   
-  run('UPDATE users SET lichess_username = ?, lichess_verified = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-      [lichess_username, req.user.id]);
+  update(db.users, req.user.id, {
+    lichess_username,
+    lichess_verified: 1
+  });
   
   res.json({ message: 'Lichess account linked', lichess_username });
 });
@@ -310,29 +262,37 @@ app.post('/api/user/lichess-link', authenticateToken, (req, res) => {
 // ================== WALLET ROUTES ==================
 
 app.get('/api/wallet/balance', authenticateToken, (req, res) => {
-  const user = getOne('SELECT wallet_balance, locked_balance FROM users WHERE id = ?', [req.user.id]);
+  const user = findById(db.users, req.user.id);
   res.json({ available: user.wallet_balance, locked: user.locked_balance });
 });
 
 app.get('/api/wallet/transactions', authenticateToken, (req, res) => {
-  const transactions = getAll('SELECT * FROM transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 50', [req.user.id]);
+  const transactions = findAll(db.transactions, t => t.user_id === req.user.id)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .slice(0, 50);
   res.json(transactions);
 });
 
 app.post('/api/wallet/deposit', authenticateToken, (req, res) => {
-  const { amount, payment_method } = req.body;
+  const { amount } = req.body;
   
   if (!amount || amount < 100) {
     return res.status(400).json({ error: 'Minimum deposit is ₦100' });
   }
   
-  run('UPDATE users SET wallet_balance = wallet_balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-      [amount, req.user.id]);
+  const user = findById(db.users, req.user.id);
+  user.wallet_balance += amount;
+  saveDatabase();
   
-  run('INSERT INTO transactions (user_id, type, amount, description, reference_id) VALUES (?, \'deposit\', ?, ?, ?)',
-      [req.user.id, amount, 'Wallet deposit', `DEP${Date.now()}`]);
+  insert(db.transactions, {
+    user_id: req.user.id,
+    type: 'deposit',
+    amount,
+    description: 'Wallet deposit',
+    reference_id: `DEP${Date.now()}`,
+    status: 'completed'
+  });
   
-  const user = getOne('SELECT wallet_balance FROM users WHERE id = ?', [req.user.id]);
   res.json({ message: 'Deposit successful', new_balance: user.wallet_balance });
 });
 
@@ -343,17 +303,23 @@ app.post('/api/wallet/withdraw', authenticateToken, (req, res) => {
     return res.status(400).json({ error: 'Minimum withdrawal is ₦500' });
   }
   
-  const user = getOne('SELECT wallet_balance FROM users WHERE id = ?', [req.user.id]);
+  const user = findById(db.users, req.user.id);
   
   if (user.wallet_balance < amount) {
     return res.status(400).json({ error: 'Insufficient balance' });
   }
   
-  run('UPDATE users SET wallet_balance = wallet_balance - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-      [amount, req.user.id]);
+  user.wallet_balance -= amount;
+  saveDatabase();
   
-  run('INSERT INTO transactions (user_id, type, amount, description, reference_id, status) VALUES (?, \'withdrawal\', ?, ?, ?, \'pending\')',
-      [req.user.id, amount, 'Withdrawal request', `WTH${Date.now()}`]);
+  insert(db.transactions, {
+    user_id: req.user.id,
+    type: 'withdrawal',
+    amount,
+    description: 'Withdrawal request',
+    reference_id: `WTH${Date.now()}`,
+    status: 'pending'
+  });
   
   res.json({ message: 'Withdrawal request submitted for approval' });
 });
@@ -367,7 +333,7 @@ app.post('/api/matches/create', authenticateToken, (req, res) => {
     return res.status(400).json({ error: `Minimum stake is ₦${CONFIG.MIN_STAKE}` });
   }
   
-  const user = getOne('SELECT wallet_balance FROM users WHERE id = ?', [req.user.id]);
+  const user = findById(db.users, req.user.id);
   
   if (user.wallet_balance < stake_amount) {
     return res.status(400).json({ error: 'Insufficient wallet balance' });
@@ -377,13 +343,23 @@ app.post('/api/matches/create', authenticateToken, (req, res) => {
   const totalPot = stake_amount * 2;
   const dxFee = (totalPot * CONFIG.PLATFORM_FEE_PERCENTAGE) / 100;
   
-  run('UPDATE users SET wallet_balance = wallet_balance - ?, locked_balance = locked_balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-      [stake_amount, stake_amount, req.user.id]);
+  user.wallet_balance -= stake_amount;
+  user.locked_balance = (user.locked_balance || 0) + stake_amount;
   
-  run('INSERT INTO matches (challenge_id, creator_id, stake_amount, time_control, is_rated, dx_fee, status) VALUES (?, ?, ?, ?, ?, ?, \'open\')',
-      [challengeId, req.user.id, stake_amount, time_control, is_rated ? 1 : 0, dxFee]);
-  
-  const match = getOne('SELECT * FROM matches WHERE challenge_id = ?', [challengeId]);
+  const match = insert(db.matches, {
+    challenge_id: challengeId,
+    creator_id: req.user.id,
+    opponent_id: null,
+    stake_amount,
+    time_control,
+    is_rated: is_rated ? 1 : 0,
+    status: 'open',
+    winner_id: null,
+    lichess_game_id: null,
+    lichess_game_url: null,
+    dx_fee: dxFee,
+    payout_amount: 0
+  });
   
   res.status(201).json({
     message: 'Match challenge created',
@@ -400,13 +376,13 @@ app.post('/api/matches/create', authenticateToken, (req, res) => {
 });
 
 app.get('/api/matches/open', authenticateToken, (req, res) => {
-  const matches = getAll(`
-    SELECT m.*, u.username as creator_username, u.lichess_username as creator_lichess
-    FROM matches m
-    JOIN users u ON m.creator_id = u.id
-    WHERE m.status = 'open' AND m.creator_id != ?
-    ORDER BY m.created_at DESC
-  `, [req.user.id]);
+  const matches = findAll(db.matches, m => m.status === 'open' && m.creator_id !== req.user.id)
+    .map(match => ({
+      ...match,
+      creator_username: findById(db.users, match.creator_id)?.username,
+      creator_lichess: findById(db.users, match.creator_id)?.lichess_username
+    }))
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   
   res.json(matches);
 });
@@ -414,7 +390,7 @@ app.get('/api/matches/open', authenticateToken, (req, res) => {
 app.post('/api/matches/accept/:challengeId', authenticateToken, (req, res) => {
   const { challengeId } = req.params;
   
-  const match = getOne('SELECT * FROM matches WHERE challenge_id = ? AND status = \'open\'', [challengeId]);
+  const match = findOne(db.matches, m => m.challenge_id === challengeId && m.status === 'open');
   
   if (!match) {
     return res.status(404).json({ error: 'Match not found or already accepted' });
@@ -424,30 +400,33 @@ app.post('/api/matches/accept/:challengeId', authenticateToken, (req, res) => {
     return res.status(400).json({ error: 'Cannot accept your own challenge' });
   }
   
-  const user = getOne('SELECT wallet_balance FROM users WHERE id = ?', [req.user.id]);
+  const user = findById(db.users, req.user.id);
   
   if (user.wallet_balance < match.stake_amount) {
     return res.status(400).json({ error: 'Insufficient balance to accept match' });
   }
   
-  run('UPDATE users SET wallet_balance = wallet_balance - ?, locked_balance = locked_balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-      [match.stake_amount, match.stake_amount, req.user.id]);
+  user.wallet_balance -= match.stake_amount;
+  user.locked_balance = (user.locked_balance || 0) + match.stake_amount;
   
-  run('UPDATE matches SET opponent_id = ?, status = \'pending_game\', created_at = CURRENT_TIMESTAMP WHERE id = ?',
-      [req.user.id, match.id]);
+  update(db.matches, match.id, {
+    opponent_id: req.user.id,
+    status: 'pending_game'
+  });
   
-  const updatedMatch = getOne(`
-    SELECT m.*, uc.username as creator_username, uc.lichess_username as creator_lichess,
-           uo.username as opponent_username, uo.lichess_username as opponent_lichess
-    FROM matches m
-    JOIN users uc ON m.creator_id = uc.id
-    JOIN users uo ON m.opponent_id = uo.id
-    WHERE m.id = ?
-  `, [match.id]);
+  const updatedMatch = findById(db.matches, match.id);
+  const creator = findById(db.users, updatedMatch.creator_id);
+  const opponent = findById(db.users, updatedMatch.opponent_id);
   
   res.json({
     message: 'Match accepted! Players can now play on Lichess.',
-    match: updatedMatch,
+    match: {
+      ...updatedMatch,
+      creator_username: creator?.username,
+      creator_lichess: creator?.lichess_username,
+      opponent_username: opponent?.username,
+      opponent_lichess: opponent?.lichess_username
+    },
     instructions: `Both players must play ONE game of ${match.time_control} on Lichess. The first completed game counts.`
   });
 });
@@ -460,15 +439,7 @@ app.post('/api/matches/submit-result/:matchId', authenticateToken, async (req, r
     return res.status(400).json({ error: 'Lichess game ID is required' });
   }
   
-  const match = getOne(`
-    SELECT m.*, 
-           uc.username as creator_username, uc.lichess_username as creator_lichess,
-           uo.username as opponent_username, uo.lichess_username as opponent_lichess
-    FROM matches m
-    JOIN users uc ON m.creator_id = uc.id
-    JOIN users uo ON m.opponent_id = uo.id
-    WHERE m.id = ?
-  `, [matchId]);
+  const match = findById(db.matches, parseInt(matchId));
   
   if (!match) {
     return res.status(404).json({ error: 'Match not found' });
@@ -491,8 +462,10 @@ app.post('/api/matches/submit-result/:matchId', authenticateToken, async (req, r
   let isDraw = gameData.winner === null;
   
   if (!isDraw) {
-    const creatorLichess = (match.creator_lichess || '').toLowerCase();
-    const opponentLichess = (match.opponent_lichess || '').toLowerCase();
+    const creator = findById(db.users, match.creator_id);
+    const opponent = findById(db.users, match.opponent_id);
+    const creatorLichess = (creator?.lichess_username || '').toLowerCase();
+    const opponentLichess = (opponent?.lichess_username || '').toLowerCase();
     
     if (gameData.winner === 'white') {
       const whitePlayer = (gameData.white?.username || '').toLowerCase();
@@ -519,56 +492,86 @@ app.post('/api/matches/submit-result/:matchId', authenticateToken, async (req, r
   const finalStatus = isDraw ? 'draw' : 'completed';
   const payout = isDraw ? match.stake_amount : (match.stake_amount * 2) - match.dx_fee;
   
-  run(`
-    UPDATE matches SET 
-      lichess_game_id = ?,
-      lichess_game_url = ?,
-      status = ?,
-      winner_id = ?,
-      payout_amount = ?,
-      completed_at = CURRENT_TIMESTAMP
-    WHERE id = ?
-  `, [lichess_game_id, lichess_game_url || `https://lichess.org/${lichess_game_id}`, finalStatus, winnerId, payout, matchId]);
+  update(db.matches, match.id, {
+    lichess_game_id,
+    lichess_game_url: lichess_game_url || `https://lichess.org/${lichess_game_id}`,
+    status: finalStatus,
+    winner_id: winnerId,
+    payout_amount: payout,
+    completed_at: new Date().toISOString()
+  });
+  
+  const creator = findById(db.users, match.creator_id);
+  const opponent = findById(db.users, match.opponent_id);
   
   if (isDraw) {
     // Refund both
-    run('UPDATE users SET wallet_balance = wallet_balance + ?, locked_balance = locked_balance - ?, matches_draw = matches_draw + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-        [match.stake_amount, match.stake_amount, match.creator_id]);
-    run('UPDATE users SET wallet_balance = wallet_balance + ?, locked_balance = locked_balance - ?, matches_draw = matches_draw + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-        [match.stake_amount, match.stake_amount, match.opponent_id]);
+    creator.wallet_balance += match.stake_amount;
+    creator.locked_balance -= match.stake_amount;
+    creator.matches_draw = (creator.matches_draw || 0) + 1;
+    
+    opponent.wallet_balance += match.stake_amount;
+    opponent.locked_balance -= match.stake_amount;
+    opponent.matches_draw = (opponent.matches_draw || 0) + 1;
   } else if (winnerId) {
     const winnerPayout = (match.stake_amount * 2) - match.dx_fee;
     
-    run('UPDATE users SET wallet_balance = wallet_balance + ?, locked_balance = locked_balance - ?, total_winnings = total_winnings + ?, matches_won = matches_won + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-        [winnerPayout, match.stake_amount, winnerPayout, winnerId]);
-    run('UPDATE users SET locked_balance = locked_balance - ?, matches_lost = matches_lost + 1, total_staked = total_staked + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-        [match.stake_amount, match.stake_amount, loserId]);
+    if (winnerId === match.creator_id) {
+      creator.wallet_balance += winnerPayout;
+      creator.locked_balance -= match.stake_amount;
+      creator.total_winnings = (creator.total_winnings || 0) + winnerPayout;
+      creator.matches_won = (creator.matches_won || 0) + 1;
+      
+      opponent.locked_balance -= match.stake_amount;
+      opponent.matches_lost = (opponent.matches_lost || 0) + 1;
+      opponent.total_staked = (opponent.total_staked || 0) + match.stake_amount;
+    } else {
+      opponent.wallet_balance += winnerPayout;
+      opponent.locked_balance -= match.stake_amount;
+      opponent.total_winnings = (opponent.total_winnings || 0) + winnerPayout;
+      opponent.matches_won = (opponent.matches_won || 0) + 1;
+      
+      creator.locked_balance -= match.stake_amount;
+      creator.matches_lost = (creator.matches_lost || 0) + 1;
+      creator.total_staked = (creator.total_staked || 0) + match.stake_amount;
+    }
   }
   
   // Platform fee
-  run('INSERT INTO transactions (user_id, type, amount, description, reference_id) VALUES (0, \'platform_fee\', ?, \'DX Platform fee from match\', ?)',
-      [match.dx_fee, `FEE${matchId}`]);
+  insert(db.transactions, {
+    user_id: 0,
+    type: 'platform_fee',
+    amount: match.dx_fee,
+    description: 'DX Platform fee from match',
+    reference_id: `FEE${match.id}`,
+    status: 'completed'
+  });
+  
+  saveDatabase();
   
   res.json({
     message: isDraw ? 'Match resulted in a draw. Stakes refunded.' : 'Match completed! Payout processed.',
     result: isDraw ? 'draw' : 'win',
-    winner: winnerId ? (winnerId === match.creator_id ? match.creator_username : match.opponent_username) : null,
+    winner: winnerId ? (winnerId === match.creator_id ? creator?.username : opponent?.username) : null,
     payout: payout,
     dx_fee: match.dx_fee
   });
 });
 
 app.get('/api/matches/my', authenticateToken, (req, res) => {
-  const matches = getAll(`
-    SELECT m.*,
-           uc.username as creator_username,
-           uo.username as opponent_username
-    FROM matches m
-    LEFT JOIN users uc ON m.creator_id = uc.id
-    LEFT JOIN users uo ON m.opponent_id = uo.id
-    WHERE m.creator_id = ? OR m.opponent_id = ?
-    ORDER BY m.created_at DESC
-  `, [req.user.id, req.user.id]);
+  const matches = findAll(db.matches, m => m.creator_id === req.user.id || m.opponent_id === req.user.id)
+    .map(match => {
+      const creator = findById(db.users, match.creator_id);
+      const opponent = findById(db.users, match.opponent_id);
+      const winner = match.winner_id ? findById(db.users, match.winner_id) : null;
+      return {
+        ...match,
+        creator_username: creator?.username,
+        opponent_username: opponent?.username,
+        winner_username: winner?.username
+      };
+    })
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   
   res.json(matches);
 });
@@ -576,57 +579,61 @@ app.get('/api/matches/my', authenticateToken, (req, res) => {
 // ================== ADMIN ROUTES ==================
 
 app.get('/api/admin/users', authenticateToken, requireAdmin, (req, res) => {
-  const users = getAll(`
-    SELECT id, username, email, lichess_username, lichess_verified,
-           wallet_balance, locked_balance, total_staked, total_winnings,
-           matches_won, matches_lost, matches_draw, is_admin, created_at
-    FROM users ORDER BY created_at DESC
-  `);
+  const users = db.users.map(u => ({
+    ...u,
+    password_hash: undefined
+  })).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   res.json(users);
 });
 
 app.get('/api/admin/matches', authenticateToken, requireAdmin, (req, res) => {
-  const matches = getAll(`
-    SELECT m.*,
-           uc.username as creator_username,
-           uo.username as opponent_username,
-           uw.username as winner_username
-    FROM matches m
-    LEFT JOIN users uc ON m.creator_id = uc.id
-    LEFT JOIN users uo ON m.opponent_id = uo.id
-    LEFT JOIN users uw ON m.winner_id = uw.id
-    ORDER BY m.created_at DESC
-  `);
+  const matches = db.matches.map(match => {
+    const creator = findById(db.users, match.creator_id);
+    const opponent = findById(db.users, match.opponent_id);
+    const winner = match.winner_id ? findById(db.users, match.winner_id) : null;
+    return {
+      ...match,
+      creator_username: creator?.username,
+      opponent_username: opponent?.username,
+      winner_username: winner?.username
+    };
+  }).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  
   res.json(matches);
 });
 
 app.get('/api/admin/withdrawals', authenticateToken, requireAdmin, (req, res) => {
-  const withdrawals = getAll(`
-    SELECT t.*, u.username, u.email
-    FROM transactions t
-    JOIN users u ON t.user_id = u.id
-    WHERE t.type = 'withdrawal' AND t.status = 'pending'
-    ORDER BY t.created_at DESC
-  `);
+  const withdrawals = findAll(db.transactions, t => t.type === 'withdrawal' && t.status === 'pending')
+    .map(t => {
+      const user = findById(db.users, t.user_id);
+      return {
+        ...t,
+        username: user?.username,
+        email: user?.email
+      };
+    })
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  
   res.json(withdrawals);
 });
 
 app.post('/api/admin/withdrawals/:id/approve', authenticateToken, requireAdmin, (req, res) => {
   const { id } = req.params;
   
-  const transaction = getOne(`
-    SELECT t.*, u.username FROM transactions t
-    JOIN users u ON t.user_id = u.id
-    WHERE t.id = ? AND t.status = 'pending'
-  `, [id]);
+  const transaction = findById(db.transactions, parseInt(id));
   
-  if (!transaction) {
+  if (!transaction || transaction.status !== 'pending') {
     return res.status(404).json({ error: 'Transaction not found' });
   }
   
-  run('UPDATE transactions SET status = \'approved\', updated_at = CURRENT_TIMESTAMP WHERE id = ?', [id]);
-  run('INSERT INTO admin_logs (admin_id, action, details) VALUES (?, \'approve_withdrawal\', ?)',
-      [req.user.id, `Approved withdrawal of ₦${transaction.amount} for ${transaction.username}`]);
+  transaction.status = 'approved';
+  saveDatabase();
+  
+  insert(db.admin_logs, {
+    admin_id: req.user.id,
+    action: 'approve_withdrawal',
+    details: `Approved withdrawal of ₦${transaction.amount} for user ${transaction.user_id}`
+  });
   
   res.json({ message: 'Withdrawal approved' });
 });
@@ -634,32 +641,41 @@ app.post('/api/admin/withdrawals/:id/approve', authenticateToken, requireAdmin, 
 app.post('/api/admin/withdrawals/:id/reject', authenticateToken, requireAdmin, (req, res) => {
   const { id } = req.params;
   
-  const transaction = getOne(`
-    SELECT t.*, u.username FROM transactions t
-    JOIN users u ON t.user_id = u.id
-    WHERE t.id = ? AND t.status = 'pending'
-  `, [id]);
+  const transaction = findById(db.transactions, parseInt(id));
   
-  if (!transaction) {
+  if (!transaction || transaction.status !== 'pending') {
     return res.status(404).json({ error: 'Transaction not found' });
   }
   
-  run('UPDATE users SET wallet_balance = wallet_balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-      [transaction.amount, transaction.user_id]);
-  run('UPDATE transactions SET status = \'rejected\', updated_at = CURRENT_TIMESTAMP WHERE id = ?', [id]);
-  run('INSERT INTO admin_logs (admin_id, action, details) VALUES (?, \'reject_withdrawal\', ?)',
-      [req.user.id, `Rejected withdrawal of ₦${transaction.amount} for ${transaction.username}. Refunded.`]);
+  // Refund
+  const user = findById(db.users, transaction.user_id);
+  if (user) {
+    user.wallet_balance += transaction.amount;
+  }
+  
+  transaction.status = 'rejected';
+  saveDatabase();
+  
+  insert(db.admin_logs, {
+    admin_id: req.user.id,
+    action: 'reject_withdrawal',
+    details: `Rejected withdrawal of ₦${transaction.amount} for user ${transaction.user_id}. Refunded.`
+  });
   
   res.json({ message: 'Withdrawal rejected and refunded' });
 });
 
 app.get('/api/admin/stats', authenticateToken, requireAdmin, (req, res) => {
-  const totalUsers = getOne('SELECT COUNT(*) as count FROM users').count;
-  const totalMatches = getOne('SELECT COUNT(*) as count FROM matches').count;
-  const completedMatches = getOne("SELECT COUNT(*) as count FROM matches WHERE status = 'completed'").count;
-  const pendingMatches = getOne("SELECT COUNT(*) as count FROM matches WHERE status IN ('open', 'pending_game')").count;
-  const platformFees = getOne('SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE type = \'platform_fee\'').total;
-  const totalStaked = getOne("SELECT COALESCE(SUM(stake_amount), 0) as total FROM matches WHERE status IN ('completed', 'draw')").total;
+  const totalUsers = db.users.length;
+  const totalMatches = db.matches.length;
+  const completedMatches = db.matches.filter(m => m.status === 'completed').length;
+  const pendingMatches = db.matches.filter(m => m.status === 'open' || m.status === 'pending_game').length;
+  const platformFees = db.transactions
+    .filter(t => t.type === 'platform_fee')
+    .reduce((sum, t) => sum + (t.amount || 0), 0);
+  const totalStaked = db.matches
+    .filter(m => m.status === 'completed' || m.status === 'draw')
+    .reduce((sum, m) => sum + (m.stake_amount || 0), 0);
   
   res.json({
     total_users: totalUsers,
@@ -683,11 +699,10 @@ app.get('*', (req, res) => {
 
 // ================== START SERVER ==================
 
-async function startServer() {
-  await initDatabase();
-  
-  app.listen(PORT, () => {
-    console.log(`
+loadDatabase();
+
+app.listen(PORT, () => {
+  console.log(`
 ╔════════════════════════════════════════════════╗
 ║                                                ║
 ║   DX - Chess Staking Platform                 ║
@@ -700,10 +715,7 @@ async function startServer() {
 ║   Min Stake:   ₦${CONFIG.MIN_STAKE}                        ║
 ║                                                ║
 ╚════════════════════════════════════════════════╝
-    `);
-  });
-}
-
-startServer().catch(console.error);
+  `);
+});
 
 module.exports = app;
